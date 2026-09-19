@@ -1,0 +1,21 @@
+# Incident telemetry — none of it is tracked.
+#
+# These files are not regenerable from anything else in the repo, so keep a
+# copy outside it. filter_baselines.py rewrites the baseline files in place;
+# without git, that overwrite has no history to recover from — the
+# protect-data hook is the only guard against an accidental one now.
+incident_data/*.csv
+
+# Pipeline output from scripts/run_component.sh
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
