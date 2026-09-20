@@ -10,7 +10,16 @@ import itertools
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-EmptyReason = Literal["no_matches", "no_data_in_window", "unknown_field_or_entity"]
+# user patch 31 + the fifth value (DECISIONS 2026-09-19). Only no_matches
+# licenses a negative claim; an unknown identifier is an invalid_query error,
+# never an empty result.
+EmptyReason = Literal[
+    "no_matches",
+    "no_data_in_window",
+    "entity_absent_from_source",
+    "join_key_unpopulated",
+    "scope_unverified",
+]
 ErrorType = Literal["transient", "invalid_query", "too_large", "timeout"]
 
 _query_id_counter = itertools.count(1)
@@ -30,6 +39,25 @@ def next_query_id() -> str:
 # session accumulates enough large handles for this to matter.
 _RESULT_STORE: dict[str, tuple[list[dict[str, Any]], Provenance]] = {}
 
+def get_result(query_id: str) -> ToolEnvelope | None:
+    """Read-only accessor for tests and ledger to verify values in _RESULT_STORE."""
+    entry = _RESULT_STORE.get(query_id)
+    if not entry:
+        return None
+    rows, provenance = entry
+    # Return a basic envelope with the cached rows.
+    # We construct a fake envelope just to carry the row_count and preview for I2 checking.
+    from agentic_rca.tools.envelope import ResultHandle, ToolEnvelope
+    return ToolEnvelope(
+        query_id=query_id,
+        result_handle=ResultHandle(id=query_id, row_count=len(rows)),
+        row_count=len(rows),
+        preview=rows,
+        summary_stats={},
+        truncated=False,
+        coverage={},
+        provenance=provenance,
+    )
 
 @dataclass(frozen=True)
 class ToolError:
@@ -65,6 +93,13 @@ class ToolEnvelope:
     provenance: Provenance
     empty_because: EmptyReason | None = None
     error: ToolError | None = None
+    # added by coverage-index (contracts-b1 §8, §11.6); defaults keep B0 callers working
+    order: dict[str, Any] | None = None
+    preview_label: str | None = None
+    preview_meta: dict[str, Any] | None = None
+    unobserved_entities: dict[str, list[str]] | None = None
+    scope_verified: bool = True
+    notes: dict[str, Any] = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -142,6 +177,26 @@ def inspect_result(
             provenance=Provenance(source="inspect_result"),
         )
     rows, provenance = entry
+    if limit < 1:
+        return make_error_envelope(
+            error=ToolError(
+                type="invalid_query",
+                diagnostic=f"limit must be >= 1 (got limit={limit})",
+            ),
+            provenance=provenance,
+        )
+    if offset < 0:
+        offset = max(0, len(rows) + offset)
+
+    if offset >= len(rows):
+        return make_error_envelope(
+            error=ToolError(
+                type="invalid_query",
+                diagnostic=f"offset {offset} is past the end of the result ({len(rows)} rows)",
+                suggestions=[f"offset <= {max(0, len(rows) - 1)}"],
+            ),
+            provenance=provenance,
+        )
 
     try:
         if sort:

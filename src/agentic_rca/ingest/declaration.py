@@ -14,6 +14,7 @@ from agentic_rca.ingest.profile import (
     clock_offset_coverage,
     clock_offset_facts,
     container_metrics_window_diff,
+    host_inventory_null_counts,
     host_inventory_per_source,
     key_cardinalities,
     metric_value_variance,

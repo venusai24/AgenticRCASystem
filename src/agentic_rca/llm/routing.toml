@@ -1,0 +1,130 @@
+# llm/routing.toml — model routing for every LLM role.
+# Every role maps to an ordered list of providers. The adapter tries
+# each in sequence on a permanent failure; transient failures (429, 5xx)
+# are retried within the same provider first (see adapter.py).
+#
+# Decision: all roles use Muse Spark 1.3 Contributor for development.
+# Primary: Meta Llama API (api.llama.com) — the key in .env was issued there.
+# Fallback: Muse Spark 1.2 Contributor on the same endpoint.
+# No silent cross-family switch: if all providers fail, the run stops.
+#
+# DECISIONS.md row: llm-routing-config (2026-09-19, encoding-risk).
+
+[pacing]
+# Minimum wall-clock seconds between calls to the same provider key.
+# Set to 0 to disable. A 429 response always triggers backoff regardless.
+min_interval_s = 0.2
+# Maximum calls per rolling 24 h window, per provider key.
+# 0 = unlimited (use this until free-tier limits are known).
+daily_cap = 0
+
+[roles]
+# Each role has a [[roles.<name>.providers]] list, tried in order.
+
+  [[roles.lead.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Maverick-17B-128E-Instruct-FP8"
+  provider_name = "meta_llama_api"
+
+  [[roles.lead.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Scout-17B-16E-Instruct"
+  provider_name = "meta_llama_api"
+
+  [[roles.critic.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Maverick-17B-128E-Instruct-FP8"
+  provider_name = "meta_llama_api"
+
+  [[roles.critic.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Scout-17B-16E-Instruct"
+  provider_name = "meta_llama_api"
+
+  [[roles.reader.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Maverick-17B-128E-Instruct-FP8"
+  provider_name = "meta_llama_api"
+
+  [[roles.reader.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Scout-17B-16E-Instruct"
+  provider_name = "meta_llama_api"
+
+  [[roles.dedup.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Scout-17B-16E-Instruct"
+  provider_name = "meta_llama_api"
+
+  [[roles.dedup.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Maverick-17B-128E-Instruct-FP8"
+  provider_name = "meta_llama_api"
+
+  [[roles.stepback.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Maverick-17B-128E-Instruct-FP8"
+  provider_name = "meta_llama_api"
+
+  [[roles.stepback.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Scout-17B-16E-Instruct"
+  provider_name = "meta_llama_api"
+
+  [[roles.summary.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Scout-17B-16E-Instruct"
+  provider_name = "meta_llama_api"
+
+  [[roles.summary.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Maverick-17B-128E-Instruct-FP8"
+  provider_name = "meta_llama_api"
+
+  [[roles.entailment.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Scout-17B-16E-Instruct"
+  provider_name = "meta_llama_api"
+
+  [[roles.entailment.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Maverick-17B-128E-Instruct-FP8"
+  provider_name = "meta_llama_api"
+
+  [[roles.bundle_qa.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Scout-17B-16E-Instruct"
+  provider_name = "meta_llama_api"
+
+  [[roles.bundle_qa.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Maverick-17B-128E-Instruct-FP8"
+  provider_name = "meta_llama_api"
+
+  [[roles.eval_judge.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Scout-17B-16E-Instruct"
+  provider_name = "meta_llama_api"
+
+  [[roles.eval_judge.providers]]
+  base_url = "https://api.llama.com/compat/v1"
+  api_key_env = "Meta_API_key"
+  model = "Llama-4-Maverick-17B-128E-Instruct-FP8"
+  provider_name = "meta_llama_api"

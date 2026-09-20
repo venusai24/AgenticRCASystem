@@ -212,6 +212,67 @@ def test_declaration_survives_a_parse_failure_in_gateway_or_status(db_con):
         )
 
 
+def test_declaration_survives_null_identity_keys(db_con):
+    # Regression check for cycle-15 VERIFY_FAIL, the fifth recurrence of "one
+    # bad cell kills all of Stage 0": a NULL cmdb_id / tc reached a bare
+    # sorted() over an identity-key set. It only crashes when the NULL lands
+    # in a set that also holds a str -- here container_metrics' incident-only
+    # hosts already hold dockerB2 -- so the NULL is placed in the incident
+    # window. Original values are captured and restored (not hardcoded)
+    # because db_con is module-scoped and shared with every other test here.
+    clean = build_declaration(db_con)
+    assert clean["host_inventory_null_cmdb_id_rows"] == {
+        "spans": 0,
+        "container_metrics": 0,
+        "logs": 0,
+    }
+
+    cm_rowid, cm_orig = db_con.execute(
+        "SELECT rowid, cmdb_id FROM container_metrics WHERE window_label = 'incident' LIMIT 1"
+    ).fetchone()
+    ap_rowid, ap_orig = db_con.execute(
+        "SELECT rowid, tc FROM app_metrics WHERE window_label = 'incident' LIMIT 1"
+    ).fetchone()
+    # A span that is the child end of a real parent/child link, so the
+    # clock-offset coverage counter has something to count.
+    sp_rowid, sp_orig = db_con.execute(
+        "SELECT c.rowid, c.cmdb_id FROM spans c JOIN spans p ON c.parent_id = p.span_id "
+        "WHERE c.span_id != c.parent_id LIMIT 1"
+    ).fetchone()
+
+    db_con.execute("UPDATE container_metrics SET cmdb_id = NULL WHERE rowid = ?", [cm_rowid])
+    db_con.execute("UPDATE app_metrics SET tc = NULL WHERE rowid = ?", [ap_rowid])
+    db_con.execute("UPDATE spans SET cmdb_id = NULL WHERE rowid = ?", [sp_rowid])
+    try:
+        decl = build_declaration(db_con)  # must not raise
+
+        container = decl["container_metrics_window_diff"]
+        assert container["cmdb_id_null_rows"] == 1
+        assert None not in container["hosts_incident_only"]
+        assert "dockerB2" in container["hosts_incident_only"]
+
+        app = decl["app_metrics_window_diff"]
+        assert app["tc_null_rows"] == 1
+        assert None not in app["tc_incident_only"]
+
+        assert decl["host_inventory_null_cmdb_id_rows"] == {
+            "spans": 1,
+            "container_metrics": 1,
+            "logs": 0,
+        }
+        hosts = decl["joins"]["cmdb_id_across_sources"]
+        assert None not in hosts["trace_hosts"]
+        assert None not in hosts["container_metric_hosts"]
+
+        assert decl["clock_offsets_coverage"]["linked_span_pairs_with_null_host"] >= 1
+    finally:
+        db_con.execute(
+            "UPDATE container_metrics SET cmdb_id = ? WHERE rowid = ?", [cm_orig, cm_rowid]
+        )
+        db_con.execute("UPDATE app_metrics SET tc = ? WHERE rowid = ?", [ap_orig, ap_rowid])
+        db_con.execute("UPDATE spans SET cmdb_id = ? WHERE rowid = ?", [sp_orig, sp_rowid])
+
+
 def test_declaration_clock_offsets_are_inline_with_host_and_offset_fields(db_con):
     decl = build_declaration(db_con)
     offsets = decl["clock_offsets"]

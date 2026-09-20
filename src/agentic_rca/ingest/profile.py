@@ -27,19 +27,15 @@ _JOIN_KEY_COLUMNS = (
 )
 
 
-def _distinct_non_null(con: duckdb.DuckDBPyConnection, sql: str) -> tuple[list, int]:
-    """Run a single-column `sql` query; return (sorted distinct non-NULL
-    values, count of NULL rows) instead of a bare `sorted()` that crashes on
-    a mixed str/None set. Fifth recurrence of that crash class (cycles 3, 9,
-    13, 14) -- cycle 15's VERIFY_FAIL reproduced it end-to-end via a single
-    blank `cmdb_id` cell in `container_metrics.csv`, in functions cycle 14
-    itself added without applying its own "fix at the source" rule to every
-    site of the same shape. Every DISTINCT/EXCEPT identity-key query in this
-    module now funnels through here."""
+def _distinct_non_null(con: duckdb.DuckDBPyConnection, sql: str) -> list:
+    """Sorted distinct non-NULL values of a single-column `sql` query, so a
+    NULL identity key can't reach a bare `sorted()` and crash it on a mixed
+    str/None set (cycle-15 VERIFY_FAIL: one blank `cmdb_id` cell killed all of
+    Stage 0). Deliberately returns no NULL count: a DISTINCT/EXCEPT result has
+    at most one NULL entry, which says nothing about how many rows were NULL.
+    Callers report row counts with an explicit COUNT(*) ... IS NULL instead."""
     rows = [r[0] for r in con.execute(sql).fetchall()]
-    non_null = sorted({v for v in rows if v is not None})
-    null_count = sum(1 for v in rows if v is None)
-    return non_null, null_count
+    return sorted({v for v in rows if v is not None})
 
 
 def table_row_counts(con: duckdb.DuckDBPyConnection) -> dict[str, int]:
@@ -75,9 +71,9 @@ def host_inventory_per_source(con: duckdb.DuckDBPyConnection) -> dict[str, set[s
     the "18 of 18 reads as full coverage" misreading that was cycle-11's
     VERIFY_FAIL.
     """
-    spans_hosts, _ = _distinct_non_null(con, "SELECT DISTINCT cmdb_id FROM spans")
-    container_hosts, _ = _distinct_non_null(con, "SELECT DISTINCT cmdb_id FROM container_metrics")
-    logs_hosts, _ = _distinct_non_null(con, "SELECT DISTINCT cmdb_id FROM logs")
+    spans_hosts = _distinct_non_null(con, "SELECT DISTINCT cmdb_id FROM spans")
+    container_hosts = _distinct_non_null(con, "SELECT DISTINCT cmdb_id FROM container_metrics")
+    logs_hosts = _distinct_non_null(con, "SELECT DISTINCT cmdb_id FROM logs")
     return {
         "spans": set(spans_hosts),
         "container_metrics": set(container_hosts),
@@ -114,12 +110,13 @@ def app_metrics_window_diff(con: duckdb.DuckDBPyConnection) -> dict:
             "SELECT window_label, COUNT(DISTINCT tc) FROM app_metrics GROUP BY window_label"
         ).fetchall()
     )
-    tc_incident_only, incident_only_null = _distinct_non_null(
+    tc_null_rows = con.execute("SELECT COUNT(*) FROM app_metrics WHERE tc IS NULL").fetchone()[0]
+    tc_incident_only = _distinct_non_null(
         con,
         "SELECT DISTINCT tc FROM app_metrics WHERE window_label = 'incident' "
         "EXCEPT SELECT DISTINCT tc FROM app_metrics WHERE window_label = 'baseline'",
     )
-    tc_baseline_only, baseline_only_null = _distinct_non_null(
+    tc_baseline_only = _distinct_non_null(
         con,
         "SELECT DISTINCT tc FROM app_metrics WHERE window_label = 'baseline' "
         "EXCEPT SELECT DISTINCT tc FROM app_metrics WHERE window_label = 'incident'",
@@ -129,7 +126,7 @@ def app_metrics_window_diff(con: duckdb.DuckDBPyConnection) -> dict:
         "tc_count_in_incident_window": tc_counts.get("incident", 0),
         "tc_incident_only": tc_incident_only,
         "tc_baseline_only": tc_baseline_only,
-        "tc_null_rows": incident_only_null + baseline_only_null,
+        "tc_null_rows": tc_null_rows,
         "note": "identity key is tc, diffed directly (EXCEPT), never by "
         "aligning the two windows positionally. COUNT(DISTINCT tc) above "
         "and the incident_only/baseline_only lists both exclude NULL tc "
@@ -158,12 +155,15 @@ def container_metrics_window_diff(con: duckdb.DuckDBPyConnection) -> dict:
             "GROUP BY window_label"
         ).fetchall()
     )
-    hosts_incident_only, host_incident_only_null = _distinct_non_null(
+    cmdb_id_null_rows = con.execute(
+        "SELECT COUNT(*) FROM container_metrics WHERE cmdb_id IS NULL"
+    ).fetchone()[0]
+    hosts_incident_only = _distinct_non_null(
         con,
         "SELECT DISTINCT cmdb_id FROM container_metrics WHERE window_label = 'incident' "
         "EXCEPT SELECT DISTINCT cmdb_id FROM container_metrics WHERE window_label = 'baseline'",
     )
-    hosts_baseline_only, host_baseline_only_null = _distinct_non_null(
+    hosts_baseline_only = _distinct_non_null(
         con,
         "SELECT DISTINCT cmdb_id FROM container_metrics WHERE window_label = 'baseline' "
         "EXCEPT SELECT DISTINCT cmdb_id FROM container_metrics WHERE window_label = 'incident'",
@@ -207,7 +207,7 @@ def container_metrics_window_diff(con: duckdb.DuckDBPyConnection) -> dict:
         "identity_key_count_in_incident_window": incident_key_count,
         "identity_keys_incident_only": incident_only_key_count,
         "identity_keys_baseline_only": baseline_only_key_count,
-        "cmdb_id_null_rows": host_incident_only_null + host_baseline_only_null,
+        "cmdb_id_null_rows": cmdb_id_null_rows,
         "note": "identity key is (cmdb_id, kpi_name), diffed directly, never "
         "by aligning the two windows positionally. kpi_name vocabulary "
         "differs per window -- don't assume a fixed KPI vocabulary across "
@@ -400,12 +400,26 @@ def clock_offset_coverage(con: duckdb.DuckDBPyConnection) -> dict:
     estimated = con.execute("SELECT host_a, host_b FROM clock_offsets").fetchall()
     estimated_pairs = {(a, b) for a, b in estimated}
     not_estimable = sorted(observed_pairs - estimated_pairs)
+    # `!=` above is NULL (not true) when either host is NULL, so such links
+    # drop out of observed_pairs entirely -- an under-count that reads as
+    # "fully observed". Count them so the denominator can't silently shrink.
+    linked_pairs_with_null_host = con.execute(
+        """
+        SELECT COUNT(*)
+        FROM spans child
+        JOIN spans parent ON child.parent_id = parent.span_id
+        WHERE child.cmdb_id IS NULL OR parent.cmdb_id IS NULL
+        """
+    ).fetchone()[0]
     return {
         "unordered_pairs_observed": len(observed_pairs),
         "pairs_estimated": len(estimated_pairs),
         "pairs_not_estimable": [{"host_a": a, "host_b": b} for a, b in not_estimable],
+        "linked_span_pairs_with_null_host": linked_pairs_with_null_host,
         "note": "a pair absent from clock_offsets means the offset could not "
-        "be estimated (only one call direction observed), not that it is zero",
+        "be estimated (only one call direction observed), not that it is zero. "
+        "linked_span_pairs_with_null_host counts parent/child links excluded "
+        "from unordered_pairs_observed because one side has no cmdb_id.",
         "method_assumption": "clock_offsets.method="
         "'ntp_style_parent_child_reciprocal' assumes a child span cannot "
         "begin before its parent, plus symmetric network delay in both call "

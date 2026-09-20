@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-rca"
+version = "0.1.0"
+description = "Agentic root-cause analysis over incident telemetry"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas>=2.0",
+    "duckdb>=1.0",
+    "pydantic>=2.0",
+    "ruptures>=1.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "-q --strict-markers"
+markers = [
+    "live: tests that hit external live APIs",
+]
+# Each ingest fixture builds a full DuckDB store from the real 324k-span
+# dataset into tmp_path. pytest retains the last 3 runs' tmp dirs by
+# default, which filled /tmp (a 3.9G tmpfs) hard enough to break the Bash
+# tool's own output mechanism with ENOSPC. Keep only failed runs' stores,
+# which is all that's ever useful for post-mortem anyway.
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
+
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Line length is the formatter's job (`ruff format`, 100 cols). E501 then only
+# fires on long string literals -- model-facing diagnostics -- which it can't split.
+ignore = ["E501"]

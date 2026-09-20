@@ -8,20 +8,29 @@ from __future__ import annotations
 
 from agentic_rca.ingest.pipeline import IngestResult
 from agentic_rca.ingest.profile import table_row_counts, time_coverage
-from agentic_rca.tools.envelope import Provenance, ToolEnvelope, make_envelope
+from agentic_rca.tools.envelope import Provenance, ToolEnvelope, make_envelope, ToolError, make_error_envelope
 
 
-def describe_dataset(result: IngestResult) -> ToolEnvelope:
+def describe_dataset(result: IngestResult, **kwargs) -> ToolEnvelope:
     """One row per source table: its row count and, where applicable, its
     per-window time coverage. summary_stats carries the full data-sufficiency
     declaration -- joins, baseline availability, host coverage per source --
     so the model can decide what it can and cannot ask for next."""
+    if kwargs:
+        return make_error_envelope(
+            error=ToolError(
+                type="invalid_query",
+                diagnostic=f"describe_dataset takes no arguments, got {list(kwargs.keys())}"
+            ),
+            provenance=Provenance(source="describe_dataset")
+        )
     counts = table_row_counts(result.con)
     coverage = time_coverage(result.con)
 
     rows = [
         {
             "table": table,
+            "evidence_kind": "occurrence" if table in {"app_metrics", "container_metrics", "spans", "logs"} else "derived",
             "row_count": row_count,
             "time_coverage": coverage.get(table),
         }
