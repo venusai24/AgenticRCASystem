@@ -2,7 +2,7 @@ import os
 from typing import Any
 
 from agentic_rca.llm.base import LLMClient
-from agentic_rca.llm.adapters.openai_adapter import OpenAIAdapter
+from agentic_rca.llm.adapters.react_adapter import ReActAdapter
 from agentic_rca.llm.logger import LoggedLLMClient
 
 def get_client(role: str, con: Any, run_id: str) -> LLMClient:
@@ -16,5 +16,5 @@ def get_client(role: str, con: Any, run_id: str) -> LLMClient:
     # Example URL for Meta-compatible API if there is one, or standard OpenAI if mocked
     base_url = os.environ.get("META_API_BASE", "https://api.openai.com/v1") 
     
-    adapter = OpenAIAdapter(api_key=api_key, base_url=base_url, model=model)
+    adapter = ReActAdapter(api_key=api_key, base_url=base_url, model=model)
     return LoggedLLMClient(adapter, con, run_id, role)

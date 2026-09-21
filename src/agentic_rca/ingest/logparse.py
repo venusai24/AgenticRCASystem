@@ -221,7 +221,7 @@ def assign_templates(con: duckdb.DuckDBPyConnection) -> int:
     """Compute a template pattern per log line, group by (log_name, pattern),
     populate log_templates, and back-fill logs.template_id. Returns the
     number of distinct templates found."""
-    rows = con.execute("SELECT log_id, log_name, value_raw FROM logs").fetchall()
+    rows = con.execute("SELECT log_id, log_name, value_raw FROM logs ORDER BY log_name, value_raw, log_id").fetchall()
 
     pattern_to_template_id: dict[tuple[str, str], str] = {}
     template_counts: dict[str, int] = {}

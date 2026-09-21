@@ -35,3 +35,37 @@ def test_replay_llm():
     
     with pytest.raises(LLMError):
         client.chat([{"role": "user", "content": "3"}])
+
+def test_react_adapter_parse_response():
+    from agentic_rca.llm.adapters.react_adapter import ReActAdapter
+    adapter = ReActAdapter(api_key="test")
+    
+    # Test valid tool call
+    resp_data = {
+        "choices": [{"message": {"content": "Thinking...\n<tool name=\"search\">\n{\"query\": \"test\"}\n</tool>\nDone."}}],
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20},
+        "model": "test-model"
+    }
+    
+    result = adapter._parse_response(resp_data)
+    assert len(result.tool_calls) == 1
+    assert result.tool_calls[0].name == "search"
+    assert result.tool_calls[0].arguments == {"query": "test"}
+    
+    # Test markdown stripping and fuzzy parsing
+    resp_data2 = {
+        "choices": [{"message": {"content": "Here is the call:\n<tool name=\"db_query\">\n```json\n{\"sql\": \"SELECT *\"}\n```\n</tool>"}}]
+    }
+    result2 = adapter._parse_response(resp_data2)
+    assert len(result2.tool_calls) == 1
+    assert result2.tool_calls[0].name == "db_query"
+    assert result2.tool_calls[0].arguments == {"sql": "SELECT *"}
+
+    # Test malformed JSON recovery
+    resp_data3 = {
+        "choices": [{"message": {"content": "<tool name=\"bad_tool\">\n{bad json}\n</tool>"}}]
+    }
+    result3 = adapter._parse_response(resp_data3)
+    assert len(result3.tool_calls) == 1
+    assert result3.tool_calls[0].name == "parsing_error"
+    assert "JSON Decode Error" in result3.tool_calls[0].arguments["error"]

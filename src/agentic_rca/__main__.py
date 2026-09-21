@@ -9,6 +9,12 @@ from pathlib import Path
 
 
 def main(argv: list[str] | None = None) -> int:
+    import signal
+    def sigint_handler(sig, frame):
+        print("\nInterrupted by user (Ctrl-C). Exiting immediately.", file=sys.stderr)
+        sys.exit(1)
+    signal.signal(signal.SIGINT, sigint_handler)
+
     p = argparse.ArgumentParser(prog="agentic_rca")
     sub = p.add_subparsers(dest="cmd", required=True)
     pi = sub.add_parser("ingest", help="build the DuckDB store from a data directory")
@@ -32,6 +38,7 @@ def main(argv: list[str] | None = None) -> int:
     pam.add_argument("--runs", default="runs")
     pam.add_argument("--hypothesis", action="append", default=[])
     pam.add_argument("--question")
+    pam.add_argument("--max-steps", type=int, default=20)
     a = p.parse_args(argv)
     if a.cmd == "ingest":
         from agentic_rca.ingest.pipeline import build_index
@@ -55,7 +62,7 @@ def main(argv: list[str] | None = None) -> int:
         import os
         from agentic_rca.answer import answer_question, AnswerError
         try:
-            from agentic_rca.llm.adapters.openai_adapter import OpenAIAdapter
+            from agentic_rca.llm.adapters.react_adapter import ReActAdapter
         except ImportError:
             print("LLM adapter could not be imported.", file=sys.stderr)
             return 2
@@ -68,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
             from agentic_rca.llm.base import ScriptedLLM, LLMResponse
             llm = ScriptedLLM(default=lambda r, m, t: LLMResponse(text='{"shape": "not_examined", "citations": []}', input_tokens=10, output_tokens=10))
         else:
-            llm = OpenAIAdapter(api_key=api_key, base_url=base_url, model=model)
+            llm = ReActAdapter(api_key=api_key, base_url=base_url, model=model)
             
         try:
             print(json.dumps(answer_question(Path(a.bundle), a.question, llm), default=str))
@@ -83,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
     import os
     try:
         from agentic_rca.llm.adapters.openai_adapter import OpenAIAdapter
+        from agentic_rca.llm.adapters.react_adapter import ReActAdapter
     except ImportError:
         print("LLM adapter could not be imported.", file=sys.stderr)
         return 2
@@ -95,7 +103,10 @@ def main(argv: list[str] | None = None) -> int:
         from agentic_rca.llm.base import ScriptedLLM, call
         llm = ScriptedLLM(default=lambda r, m, t: call("request_termination"))
     else:
-        llm = OpenAIAdapter(api_key=api_key, base_url=base_url, model=model)
+        if "muse-spark" in model:
+            llm = ReActAdapter(api_key=api_key, base_url=base_url, model=model)
+        else:
+            llm = OpenAIAdapter(api_key=api_key, base_url=base_url, model=model)
     
     if a.cmd == "amend":
         from agentic_rca.report.bundle import verify_bundle, BundleError
@@ -131,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
         # Retrieve incident_ts from parent run's DB because it is required for RunConfig
         import duckdb
         with duckdb.connect(str(Path(a.bundle) / "run.duckdb"), read_only=True) as con:
-            res = con.execute("SELECT payload FROM run_inputs WHERE key = 'incident_ts'").fetchone()
+            res = con.execute("SELECT payload FROM run_inputs WHERE name = 'incident_ts'").fetchone()
             if res:
                 incident_ts = json.loads(res[0])
                 
@@ -149,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
             incident_ts=incident_ts,
             data_dir=None,
             human_hypotheses=hypotheses,
-            budget=Budget(max_steps=20, max_tokens=1500000), # amendment budget
+            budget=Budget(max_steps=a.max_steps, max_tokens=1500000), # amendment budget
             parent_run_dir=Path(a.bundle)
         )
         print(json.dumps(run_investigation(cfg, llm), default=str))

@@ -65,9 +65,11 @@ def nearest(value: str, candidates: list[str], n: int = 5) -> list[str]:
 
 
 def _to_epoch_s(v: Any) -> float:
-    if isinstance(v, (int, float)):
+    try:
         x = float(v)
         return x / 1000.0 if x > 1e11 else x  # accept ms epochs, normalise to s
+    except (ValueError, TypeError):
+        pass
     s = str(v).strip().replace("Z", "+00:00")
     dt = datetime.fromisoformat(s)
     if dt.tzinfo is None:

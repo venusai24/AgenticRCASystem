@@ -151,7 +151,6 @@ def run_investigation(
 
     if cfg.parent_run_dir:
         # Amendment profile: skip ORIENT, inject questions directly
-        led.apply("standing_seed", {}, actor="scaffold")
         for h in cfg.human_hypotheses:
             out = led.apply("hypothesis_create_human", {"statement": h}, actor="human")
             if on_hypothesis_write:

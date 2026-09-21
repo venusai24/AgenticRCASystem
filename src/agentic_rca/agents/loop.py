@@ -20,7 +20,8 @@ import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypedDict
+from langgraph.graph import StateGraph, START, END
 
 from agentic_rca.ledger import Ledger, LedgerError, render
 from agentic_rca.ledger.rundb import now_iso
@@ -110,6 +111,14 @@ class LoopResult:
     reason: str = ""
     steps: int = 0
     detail: dict = field(default_factory=dict)
+
+
+class AgentState(TypedDict):
+    taken: int
+    max_steps: int | None
+    use_budget: bool
+    loop_result: LoopResult | None
+    resp: Any | None
 
 
 def frame(obj: Any, **attrs: Any) -> str:
@@ -228,22 +237,19 @@ class AgentLoop:
         return msgs
 
     # ---- one run -------------------------------------------------------------------
-    def run(
-        self,
-        *,
-        mode: str = "INVESTIGATE",
-        instruction: str = "",
-        allowed: set[str] | None = None,
-        max_steps: int | None = None,
-        use_budget: bool = True,
-    ) -> LoopResult:
-        self.mode, self.mode_instruction, self.allowed = mode, instruction, allowed
-        taken = 0
-        while True:
+    def _build_graph(self):
+        graph = StateGraph(AgentState)
+
+        def reasoner_node(state: AgentState):
+            use_budget = state.get("use_budget", True)
+            max_steps = state.get("max_steps")
+            taken = state["taken"]
+            
             if use_budget and (why := self.budget.exhausted()):
-                return LoopResult("budget_exhausted", why, taken)
+                return {"loop_result": LoopResult("budget_exhausted", why, taken)}
             if max_steps is not None and taken >= max_steps:
-                return LoopResult("step_limit", f"{max_steps} steps", taken)
+                return {"loop_result": LoopResult("step_limit", f"{max_steps} steps", taken)}
+                
             try:
                 resp, _cid = self.llm.complete(
                     self.actor,
@@ -252,8 +258,15 @@ class AgentLoop:
                     prompt_id=self.prompt_name,
                     prompt_sha=self.prompt_sha,
                 )
+                return {"resp": resp}
             except LLMError as exc:
-                return LoopResult("llm_error", str(exc), taken)
+                return {"loop_result": LoopResult("llm_error", str(exc), taken)}
+
+        def tool_node(state: AgentState):
+            resp = state.get("resp")
+            taken = state["taken"]
+            use_budget = state.get("use_budget", True)
+            
             self.budget.tokens += resp.input_tokens + resp.output_tokens
             if not resp.tool_calls:
                 self.step_no += 1
@@ -263,12 +276,15 @@ class AgentLoop:
                     StepRecord(self.step_no, None, None, "", NO_ACTION, text=resp.text)
                 )
                 self._trajectory(None, None, {}, "no_action", resp)
-                continue
+                return {"taken": taken}
+                
             for tc in resp.tool_calls:
+                print(f"[{self.mode} | Step {self.step_no + 1}] -> {tc.name}(...)")
                 self.step_no += 1
                 taken += 1
                 self.budget.steps += 1
                 seq_before = self.ledger.last_seq()
+                
                 if tc.raw_arguments is not None:
                     result, control, meta = (
                         {
@@ -290,21 +306,72 @@ class AgentLoop:
                 )
                 traj = self._trajectory(tc.name, tc.arguments, meta, None, resp, seq_before)
                 if control is not None:
-                    return LoopResult(
-                        control, "", taken, result if isinstance(result, dict) else {}
-                    )
+                    return {"loop_result": LoopResult(control, "", taken, result if isinstance(result, dict) else {}), "taken": taken}
                 if self.overseer is not None:
                     verdict = self.overseer.after_step(traj, self.ledger)
                     if verdict and verdict[0] == "stop":
-                        return LoopResult("overseer_stop", verdict[1], taken)
+                        return {"loop_result": LoopResult("overseer_stop", verdict[1], taken), "taken": taken}
                     if verdict and verdict[0] == "nudge":
                         self.nudges.append(verdict[1])
                 if use_budget and self.budget.exhausted():
                     break
+            return {"taken": taken}
+
+        def consolidator_node(state: AgentState):
             if self.config.consolidate_every and self.step_no % self.config.consolidate_every == 0:
                 self.nudges.append(CONSOLIDATE)
             if self.config.summary_every and self.step_no % self.config.summary_every == 0:
                 self._summarise()
+            return {}
+
+        def route_after_reasoner(state: AgentState):
+            if state.get("loop_result") is not None:
+                return END
+            return "tool_node"
+
+        def route_after_tools(state: AgentState):
+            if state.get("loop_result") is not None:
+                return END
+            return "consolidator_node"
+            
+        def route_after_consolidator(state: AgentState):
+            return "reasoner_node"
+
+        graph.add_node("reasoner_node", reasoner_node)
+        graph.add_node("tool_node", tool_node)
+        graph.add_node("consolidator_node", consolidator_node)
+        
+        graph.add_edge(START, "reasoner_node")
+        graph.add_conditional_edges("reasoner_node", route_after_reasoner, {END: END, "tool_node": "tool_node"})
+        graph.add_conditional_edges("tool_node", route_after_tools, {END: END, "consolidator_node": "consolidator_node"})
+        graph.add_edge("consolidator_node", "reasoner_node")
+        
+        return graph.compile()
+
+    def run(
+        self,
+        *,
+        mode: str = "INVESTIGATE",
+        instruction: str = "",
+        allowed: set[str] | None = None,
+        max_steps: int | None = None,
+        use_budget: bool = True,
+    ) -> LoopResult:
+        self.mode, self.mode_instruction, self.allowed = mode, instruction, allowed
+        
+        if not hasattr(self, "_graph"):
+            self._graph = self._build_graph()
+            
+        initial_state = {
+            "taken": 0,
+            "max_steps": max_steps,
+            "use_budget": use_budget,
+            "loop_result": None,
+            "resp": None,
+        }
+        
+        final_state = self._graph.invoke(initial_state)
+        return final_state["loop_result"]
 
     def dispatch(self, name: str, args: dict) -> tuple[dict, str | None, dict, str]:
         if name not in self.actions or (self.allowed is not None and name not in self.allowed):

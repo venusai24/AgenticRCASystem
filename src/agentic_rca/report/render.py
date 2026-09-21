@@ -6,6 +6,19 @@ from dataclasses import dataclass
 from agentic_rca.ledger.fold import Event, fold
 
 def _get_state(db_path: str):
+    from agentic_rca.ledger.ledger import Ledger
+    import pathlib
+    try:
+        # Ledger.open expects a run_dir (which contains run.duckdb)
+        run_dir = pathlib.Path(db_path).parent
+        led = Ledger.open(run_dir, read_only=True)
+        events = led.events()
+        run_id = led.run_id
+        led.close()
+        return fold(events, run_id)
+    except Exception:
+        pass
+        
     con = duckdb.connect(db_path, read_only=True)
     rows = con.execute("SELECT run_id, seq, actor, step, op, record_type, record_id, payload FROM ledger_events ORDER BY seq").fetchall()
     
@@ -80,7 +93,7 @@ def render_report(db_path: str) -> str:
     if kind == "inconclusive" and dc and dc.get("candidates"):
         lines.append("## Inconclusive Candidates")
         for cand in dc["candidates"]:
-            hid = cand.get("id", "")
+            hid = cand.get("hypothesis_id") or cand.get("id", "")
             h = state.hypotheses.get(hid, {})
             tier = cand.get("tier", 0)
             lines.append(f"- **{hid}** (Tier {tier}): {h.get('statement', '')}")

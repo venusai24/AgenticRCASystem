@@ -4,7 +4,7 @@
 # copy outside it. filter_baselines.py rewrites the baseline files in place;
 # without git, that overwrite has no history to recover from — the
 # protect-data hook is the only guard against an accidental one now.
-incident_data/*.csv
+incident_data
 
 # Pipeline output from scripts/run_component.sh
 logs/
@@ -19,3 +19,7 @@ build/
 dist/
 .venv/
 venv/
+.pytest_cache
+.env
+
+tests/

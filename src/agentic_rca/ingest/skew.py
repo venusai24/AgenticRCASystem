@@ -37,6 +37,7 @@ def _ordered_pair_deltas(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
         FROM spans child
         JOIN spans parent ON child.parent_id = parent.span_id
         WHERE child.cmdb_id != parent.cmdb_id
+        ORDER BY parent_host, child_host, delta_ms, child.span_id
         """
     ).fetchdf()
 
@@ -102,8 +103,10 @@ def estimate_clock_offsets(con: duckdb.DuckDBPyConnection) -> int:
             delta_ab = grouped.loc[fwd, "median_delta"]
             delta_ba = grouped.loc[rev, "median_delta"]
             n_ab, n_ba = grouped.loc[fwd, "n"], grouped.loc[rev, "n"]
-            std_ab = grouped.loc[fwd, "std"] or 0.0
-            std_ba = grouped.loc[rev, "std"] or 0.0
+            std_ab_val = grouped.loc[fwd, "std"]
+            std_ba_val = grouped.loc[rev, "std"]
+            std_ab = float(std_ab_val) if pd.notna(std_ab_val) else 0.0
+            std_ba = float(std_ba_val) if pd.notna(std_ba_val) else 0.0
 
             offset = (delta_ab - delta_ba) / 2
             one_way_delay = (delta_ab + delta_ba) / 2
@@ -115,7 +118,7 @@ def estimate_clock_offsets(con: duckdb.DuckDBPyConnection) -> int:
                     "offset_ms": float(offset),
                     "n_pairs": int(n_ab + n_ba),
                     "implied_one_way_delay_ms": float(one_way_delay),
-                    "residual_std_ms": float(max(std_ab, std_ba)),
+                    "residual_std_ms": round(float(max(std_ab, std_ba)), 4),
                     "method": "ntp_style_parent_child_reciprocal",
                 }
             )

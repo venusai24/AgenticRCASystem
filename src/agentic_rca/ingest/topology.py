@@ -29,7 +29,7 @@ def assign_span_roots(con: duckdb.DuckDBPyConnection) -> dict[str, int]:
     # (SchemaOfCSVs.MD: up to 19 in this dataset). Pick the earliest by
     # timestamp as *the* representative root for that trace -- an arbitrary
     # but stated tie-break, not a claim that the others aren't also roots.
-    true_root_per_trace = true_roots.sort_values("timestamp_ms").drop_duplicates(
+    true_root_per_trace = true_roots.sort_values(["timestamp_ms", "span_id"]).drop_duplicates(
         subset="trace_id", keep="first"
     )
     true_root_per_trace = true_root_per_trace.assign(root_kind="true_root")[
@@ -38,7 +38,7 @@ def assign_span_roots(con: duckdb.DuckDBPyConnection) -> dict[str, int]:
 
     traces_with_true_root = set(true_root_per_trace["trace_id"])
     remaining = spans[~spans["trace_id"].isin(traces_with_true_root)]
-    fallback_per_trace = remaining.sort_values("timestamp_ms").drop_duplicates(
+    fallback_per_trace = remaining.sort_values(["timestamp_ms", "span_id"]).drop_duplicates(
         subset="trace_id", keep="first"
     )
     fallback_per_trace = fallback_per_trace.assign(root_kind="earliest_fallback")[

@@ -6,14 +6,24 @@ from typing import Any
 
 from agentic_rca.llm.base import LLMClient, LLMResponse, ToolCall, LLMError
 
+try:
+    from langsmith import traceable
+except ImportError:
+    def traceable(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
 class OpenAIAdapter(LLMClient):
     def __init__(self, api_key: str, base_url: str = "https://api.openai.com/v1", model: str = "gpt-4o-mini", max_retries: int = 3, initial_backoff: float = 1.0):
+        super().__init__()
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.max_retries = max_retries
         self.initial_backoff = initial_backoff
 
+    @traceable(run_type="llm")
     def _complete(self, role: str, messages: list[dict[str, Any]], tools: list[dict[str, Any]] | None = None, response_format: dict | None = None) -> LLMResponse:
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -26,7 +36,7 @@ class OpenAIAdapter(LLMClient):
             "messages": messages,
         }
         if tools:
-            data["tools"] = tools
+            data["tools"] = [{"type": "function", "function": t} for t in tools]
             
         payload = json.dumps(data).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
