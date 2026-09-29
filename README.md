@@ -36,6 +36,9 @@ An interactive GUI was built to facilitate investigations without relying on the
 ### Root Cause Report
 ![Root Cause Report](docs/images/ui_4.png)
 
+### Amend Finished Runs
+![Amend Finished Runs](docs/images/ui_5.png)
+
 ---
 
 ## Installation & Setup
