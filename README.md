@@ -19,6 +19,23 @@ An agentic root-cause-analysis (RCA) system that reasons over incident telemetry
 - **Human Collaboration**
   You can inject human hypotheses ("hunches") into the investigation, and the agent will subject them to the exact same rigorous evidence gathering as its own theories.
 
+
+---
+
+## GUI
+
+An interactive GUI was built to facilitate investigations without relying on the CLI, making all features easily accessible through the GUI.
+
+### Submit Telemetry
+![Submit Telemetry](docs/images/ui_3.png)
+
+### Investigation in Progress
+![Investigation in Progress](docs/images/ui_1.png)
+![Investigation in Progress](docs/images/ui_2.png)
+
+### Root Cause Report
+![Root Cause Report](docs/images/ui_4.png)
+
 ---
 
 ## Installation & Setup
@@ -27,10 +44,6 @@ An agentic root-cause-analysis (RCA) system that reasons over incident telemetry
    Ensure you have Python 3 installed. Install the package using the provided `pyproject.toml`:
    ```bash
    pip install -e .
-   ```
-   Or explicitly set `PYTHONPATH` when running scripts:
-   ```bash
-   export PYTHONPATH=$(pwd)/src
    ```
 
 2. **Environment Variables**
