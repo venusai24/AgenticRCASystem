@@ -2,8 +2,44 @@
 
 import json
 import duckdb
+import os
 from dataclasses import dataclass
 from agentic_rca.ledger.fold import Event, fold
+
+def _generate_llm_summary(state) -> str:
+    api_key = os.environ.get("META_API_KEY")
+    if not api_key or api_key == "dummy":
+        return ""
+    
+    unresolved = [h for h in state.hypotheses.values() if h.get("status") == "unresolved"]
+    if not unresolved:
+        return ""
+        
+    model = os.environ.get("META_API_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+    base_url = os.environ.get("META_API_BASE", "https://api.openai.com/v1")
+    
+    if "muse-spark" in model:
+        from agentic_rca.llm.adapters.react_adapter import ReActAdapter
+        llm = ReActAdapter(api_key=api_key, base_url=base_url, model=model)
+    else:
+        from agentic_rca.llm.adapters.openai_adapter import OpenAIAdapter
+        llm = OpenAIAdapter(api_key=api_key, base_url=base_url, model=model)
+        
+    prompt = "You are an incident response expert. Please write a professional, concise executive summary of the alternative hypotheses that were investigated but NOT rejected (unresolved) for this incident. Explain the supporting/contradicting aspects behind them based on the provided reasoning.\n\n"
+    for h in unresolved:
+        prompt += f"- Hypothesis: {h.get('statement')}\n"
+        basis = h.get('status_basis', {})
+        if basis and basis.get('reason'):
+            prompt += f"  Agent's reasoning/evidence: {basis.get('reason')}\n"
+            
+    try:
+        resp = llm._complete("user", [{"role": "user", "content": prompt}])
+        if resp.error:
+            return f"\n> *Failed to generate LLM summary: {resp.error}*\n"
+        return "\n## Alternative Hypotheses (LLM Summary)\n\n" + (resp.text or "") + "\n"
+    except Exception as e:
+        return f"\n> *Failed to generate LLM summary: {str(e)}*\n"
+
 
 def _get_state(db_path: str):
     from agentic_rca.ledger.ledger import Ledger
@@ -90,18 +126,29 @@ def render_report(db_path: str) -> str:
             lines.append("")
             
     # Render Inconclusive Tiers if inconclusive
-    if kind == "inconclusive" and dc and dc.get("candidates"):
-        lines.append("## Inconclusive Candidates")
-        for cand in dc["candidates"]:
-            hid = cand.get("hypothesis_id") or cand.get("id", "")
-            h = state.hypotheses.get(hid, {})
-            tier = cand.get("tier", 0)
-            lines.append(f"- **{hid}** (Tier {tier}): {h.get('statement', '')}")
-            if cand.get("tied"):
-                lines.append("  - *Tied*")
-            if cand.get("flag"):
-                lines.append(f"  - Flag: {cand['flag']}")
-        lines.append("")
+    if kind == "inconclusive":
+        if dc and dc.get("candidates"):
+            lines.append("## Inconclusive Candidates")
+            for cand in dc["candidates"]:
+                hid = cand.get("hypothesis_id") or cand.get("id", "")
+                h = state.hypotheses.get(hid, {})
+                tier = cand.get("tier", 0)
+                lines.append(f"- **{hid}** (Tier {tier}): {h.get('statement', '')}")
+                if cand.get("tied"):
+                    lines.append("  - *Tied*")
+                if cand.get("flag"):
+                    lines.append(f"  - Flag: {cand['flag']}")
+            lines.append("")
+        else:
+            cands = [
+                h for h in state.hypotheses.values()
+                if h["origin"] != "scaffold" and h["status"] in ("unresolved", "live", "accepted")
+            ]
+            if cands:
+                lines.append("## Inconclusive Candidates")
+                for h in sorted(cands, key=lambda x: x["id"]):
+                    lines.append(f"- **{h['id']}**: {h.get('statement', '')} (Status: {h.get('status', 'unresolved')})")
+                lines.append("")
         
     # Render Refutations
     refuted = [h for h in state.hypotheses.values() if h.get("status") == "refuted"]
@@ -157,6 +204,11 @@ def render_report(db_path: str) -> str:
             for res in o.get("resolutions", []):
                 lines.append(f"  - {res.get('kind')}: {res.get('note')}")
         lines.append("")
+        
+    # Append LLM Summary if available
+    llm_summary = _generate_llm_summary(state)
+    if llm_summary:
+        lines.append(llm_summary)
         
     return "\n".join(lines)
 

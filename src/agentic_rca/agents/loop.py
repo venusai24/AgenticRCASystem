@@ -34,7 +34,7 @@ CONSOLIDATE = (
     "established (evidence, hypothesis links, predictions, open questions), then continue. "
     "Anything not in the ledger will not survive in your context."
 )
-NO_ACTION = "Respond with exactly one tool call. Plain text is not an action."
+NO_ACTION = "Respond with one or more tool calls. Plain text is not an action."
 
 
 @dataclass
@@ -187,14 +187,8 @@ class AgentLoop:
     # ---- context -------------------------------------------------------------------
     def compose(self) -> list[dict]:
         parts = [self.header()]
-        parts.append(
-            f"MODE: {self.mode}" + (f"\n{self.mode_instruction}" if self.mode_instruction else "")
-        )
-        parts.append(f"BUDGET: {self.budget.line()}")
-        if self.summary:
-            parts.append(
-                f"SUMMARY OF EARLIER STEPS (convenience; the ledger is authoritative):\n{self.summary}"
-            )
+        
+        # 1. Slowest changing / Largest items first (for optimal prefix caching)
         state = self.ledger.state()
         parts.append(
             "LEDGER (authoritative):\n"
@@ -205,6 +199,17 @@ class AgentLoop:
                 max_chars=self.config.ledger_max_chars,
             )
         )
+        
+        if self.summary:
+            parts.append(
+                f"SUMMARY OF EARLIER STEPS (convenience; the ledger is authoritative):\n{self.summary}"
+            )
+            
+        # 2. Faster changing / Dynamic items last (busts the cache)
+        parts.append(
+            f"MODE: {self.mode}" + (f"\n{self.mode_instruction}" if self.mode_instruction else "")
+        )
+        parts.append(f"BUDGET: {self.budget.line()}")
         for n in self.nudges:
             parts.append(f"NOTE FROM THE PROCESS MONITOR: {n}")
         self.nudges = []
@@ -279,13 +284,17 @@ class AgentLoop:
                 return {"taken": taken}
                 
             for tc in resp.tool_calls:
+                # 1. Bookkeeping and Budgeting
                 print(f"[{self.mode} | Step {self.step_no + 1}] -> {tc.name}(...)")
                 self.step_no += 1
                 taken += 1
                 self.budget.steps += 1
+                # Record ledger sequence to check later if the tool call modified the ledger
                 seq_before = self.ledger.last_seq()
                 
+                # 2. Execution and Error Handling
                 if tc.raw_arguments is not None:
+                    # Invalid JSON recovery: construct a structured error instead of crashing
                     result, control, meta = (
                         {
                             "error": {
@@ -298,23 +307,38 @@ class AgentLoop:
                     )
                     text = frame(result, action=tc.name)
                 else:
+                    # Valid execution: find and execute the correct tool
                     result, control, meta, text = self.dispatch(tc.name, tc.arguments)
+                
+                # 3. History and Observability
                 self.history.append(
                     StepRecord(
                         self.step_no, tc.name, tc.arguments, tc.id or f"c{self.step_no}", text
                     )
                 )
+                # Log step to the trajectory database table for telemetry
                 traj = self._trajectory(tc.name, tc.arguments, meta, None, resp, seq_before)
+                
+                # 4. Control Flow and Oversight
                 if control is not None:
+                    # Tool requested early termination (e.g., done investigating)
                     return {"loop_result": LoopResult(control, "", taken, result if isinstance(result, dict) else {}), "taken": taken}
+                
                 if self.overseer is not None:
+                    # Overseer checks if agent is stagnating (making calls without updating ledger)
+                    # verdict is tuple[str, str] -> ("stop", <reason>) or ("nudge", <message>)
                     verdict = self.overseer.after_step(traj, self.ledger)
                     if verdict and verdict[0] == "stop":
+                        # Stagnation limit reached, force loop termination
                         return {"loop_result": LoopResult("overseer_stop", verdict[1], taken), "taken": taken}
                     if verdict and verdict[0] == "nudge":
+                        # Warning threshold reached, append a warning nudge to system prompt for the next step
                         self.nudges.append(verdict[1])
+                
+                # 5. Budget Check
                 if use_budget and self.budget.exhausted():
                     break
+            
             return {"taken": taken}
 
         def consolidator_node(state: AgentState):

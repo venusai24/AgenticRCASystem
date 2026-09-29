@@ -52,6 +52,7 @@ class RunConfig:
     residual_k: float = 2.0
     system_facts: list[dict] = field(default_factory=list)
     parent_run_dir: Path | None = None
+    parent_seq: int | None = None
 
 
 def dataset_digest(data_dir: Path | None) -> dict:
@@ -142,6 +143,7 @@ def run_investigation(
             "residual_k": cfg.residual_k,
         },
         parent_run_dir=cfg.parent_run_dir,
+        parent_seq=cfg.parent_seq,
     )
     rt = ToolRuntime(cfg.store_path, led)
     llm.bind(led.con, led.run_id)

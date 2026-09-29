@@ -72,13 +72,13 @@ class Ledger:
         con,
         run_id: str,
         run_dir: Path,
-        lineage: list[tuple[str, Path]],
+        lineage: list[tuple[str, Path, int | None]],
         result_lookup: ResultLookup | None = None,
     ):
         self.con = con
         self.run_id = run_id
         self.run_dir = run_dir
-        self.lineage = lineage  # [(run_id, run.duckdb path)] ancestors, oldest first
+        self.lineage = lineage  # [(run_id, run.duckdb path, seq_limit)] ancestors, oldest first
         self.result_lookup = result_lookup or _no_lookup
         self._parent_events: list[Event] | None = None
         self._parent_queries: dict[str, dict] | None = None
@@ -97,18 +97,22 @@ class Ledger:
         incident_ts: float | None = None,
         params: dict | None = None,
         parent_run_dir: Path | None = None,
+        parent_seq: int | None = None,
         run_id: str | None = None,
         result_lookup: ResultLookup | None = None,
     ) -> Ledger:
         run_id = run_id or mint_run_id()
         run_dir = Path(runs_root) / run_id
         run_dir.mkdir(parents=True, exist_ok=False)
-        lineage: list[tuple[str, Path]] = []
+        lineage: list[tuple[str, Path, int | None]] = []
         parent_id = root_id = None
         depth = 0
+        if parent_seq is not None:
+            params = params or {}
+            params["parent_seq"] = parent_seq
         if parent_run_dir is not None:
             parent = cls.open(parent_run_dir, read_only=True)
-            lineage = parent.lineage + [(parent.run_id, parent.run_dir / "run.duckdb")]
+            lineage = parent.lineage + [(parent.run_id, parent.run_dir / "run.duckdb", parent_seq)]
             prow = parent.run_row()
             parent.close()
             parent_id = prow["run_id"]
@@ -139,12 +143,14 @@ class Ledger:
     ) -> Ledger:
         run_dir = Path(run_dir)
         con = connect_run(run_dir / "run.duckdb", read_only=read_only)
-        row = con.execute("SELECT run_id, parent_run_path FROM run").fetchone()
-        run_id, parent_path = row
-        lineage: list[tuple[str, Path]] = []
+        row = con.execute("SELECT run_id, parent_run_path, params FROM run").fetchone()
+        run_id, parent_path, params_str = row
+        params = json.loads(params_str) if params_str else {}
+        parent_seq = params.get("parent_seq")
+        lineage: list[tuple[str, Path, int | None]] = []
         if parent_path:
             parent = cls.open(Path(parent_path), read_only=True)
-            lineage = parent.lineage + [(parent.run_id, parent.run_dir / "run.duckdb")]
+            lineage = parent.lineage + [(parent.run_id, parent.run_dir / "run.duckdb", parent_seq)]
             parent.close()
         return cls(con, run_id, run_dir, lineage, result_lookup)
 
@@ -158,11 +164,14 @@ class Ledger:
 
     # ---- reading ---------------------------------------------------------------
     @staticmethod
-    def _read_events(con, run_id: str | None = None) -> list[Event]:
-        rows = con.execute(
-            "SELECT run_id, seq, actor, step, op, record_type, record_id, payload "
-            "FROM ledger_events ORDER BY seq"
-        ).fetchall()
+    def _read_events(con, run_id: str | None = None, seq_limit: int | None = None) -> list[Event]:
+        q = "SELECT run_id, seq, actor, step, op, record_type, record_id, payload FROM ledger_events"
+        args = []
+        if seq_limit is not None:
+            q += " WHERE seq <= ?"
+            args.append(seq_limit)
+        q += " ORDER BY seq"
+        rows = con.execute(q, args).fetchall()
         return [Event(r[0], r[1], r[2], r[3], r[4], r[5], r[6], json.loads(r[7])) for r in rows]
 
     def _load_parents(self) -> None:
@@ -170,10 +179,15 @@ class Ledger:
             return
         events: list[Event] = []
         queries: dict[str, dict] = {}
-        for _rid, path in self.lineage:
+        for _rid, path, seq_limit in self.lineage:
             pcon = connect_run(path, read_only=True)
-            events.extend(self._read_events(pcon))
-            cur = pcon.execute("SELECT * FROM queries")
+            events.extend(self._read_events(pcon, seq_limit=seq_limit))
+            q = "SELECT * FROM queries"
+            args = []
+            if seq_limit is not None:
+                q += " WHERE seq <= ?"
+                args.append(seq_limit)
+            cur = pcon.execute(q, args)
             cols = [d[0] for d in cur.description]
             for r in cur.fetchall():
                 d = dict(zip(cols, r, strict=True))
@@ -209,7 +223,7 @@ class Ledger:
 
     # ---- ids -----------------------------------------------------------------
     def lineage_ids(self) -> set[str]:
-        return {rid for rid, _ in self.lineage} | {self.run_id}
+        return {rid for rid, _, _ in self.lineage} | {self.run_id}
 
     def q(self, short_or_qualified: str) -> str:
         """Normalise an id to its qualified `<run_id>/<id>` form (I9)."""

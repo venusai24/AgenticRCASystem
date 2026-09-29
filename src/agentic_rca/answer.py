@@ -96,11 +96,11 @@ Question:
             for cit in citations:
                 # Check ledger_events (evidence) or coverage table
                 if cit.startswith("e"):
-                    row = con.execute("SELECT 1 FROM ledger_events WHERE id = ?", [cit]).fetchone()
+                    row = con.execute("SELECT 1 FROM ledger_events WHERE event_id = ?", [cit]).fetchone()
                     if not row:
                         raise AnswerError(f"Citation {cit} rejected: evidence ID not found in ledger.")
                 elif cit.startswith("c"):
-                    row = con.execute("SELECT 1 FROM coverage WHERE id = ?", [cit]).fetchone()
+                    row = con.execute("SELECT 1 FROM coverage WHERE coverage_id = ?", [cit]).fetchone()
                     if not row:
                         raise AnswerError(f"Citation {cit} rejected: coverage ID not found in ledger.")
                 else:

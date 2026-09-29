@@ -800,8 +800,14 @@ def render_unmet(result: DoneCheckResult, short=lambda s: s, cap: int = 20) -> l
 # ---- adapter: assemble the input from a run, record the result ------------------------------
 
 
-def load_coverage(con) -> list[dict]:
-    cur = con.execute("SELECT * FROM coverage ORDER BY coverage_id")
+def load_coverage(con, seq_limit=None) -> list[dict]:
+    q = "SELECT c.* FROM coverage c"
+    args = []
+    if seq_limit is not None:
+        q += " JOIN queries q ON c.query_id = q.query_id WHERE q.seq <= ?"
+        args.append(seq_limit)
+    q += " ORDER BY c.coverage_id"
+    cur = con.execute(q, args)
     cols = [d[0] for d in cur.description]
     out = []
     for r in cur.fetchall():
@@ -819,12 +825,15 @@ def load_coverage(con) -> list[dict]:
     return out
 
 
-def load_queries(con) -> dict[str, dict]:
+def load_queries(con, seq_limit=None) -> dict[str, dict]:
+    q = "SELECT query_id, tool, input_query_ids, status FROM queries"
+    args = []
+    if seq_limit is not None:
+        q += " WHERE seq <= ?"
+        args.append(seq_limit)
     return {
         r[0]: {"tool": r[1], "input_query_ids": json.loads(r[2] or "[]"), "status": r[3]}
-        for r in con.execute(
-            "SELECT query_id, tool, input_query_ids, status FROM queries"
-        ).fetchall()
+        for r in con.execute(q, args).fetchall()
     }
 
 
@@ -833,10 +842,10 @@ def run_coverage(ledger) -> tuple[list[dict], dict[str, dict]]:
     from agentic_rca.ledger.rundb import connect_run
 
     coverage, queries = load_coverage(ledger.con), load_queries(ledger.con)
-    for _rid, path in ledger.lineage:
+    for _rid, path, seq_limit in ledger.lineage:
         pcon = connect_run(path, read_only=True)
-        coverage += load_coverage(pcon)
-        queries.update(load_queries(pcon))
+        coverage += load_coverage(pcon, seq_limit=seq_limit)
+        queries.update(load_queries(pcon, seq_limit=seq_limit))
         pcon.close()
     return coverage, queries
 

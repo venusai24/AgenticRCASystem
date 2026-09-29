@@ -1,0 +1,43 @@
+{
+  "budget": {
+    "limits": {},
+    "used": {
+      "extensions": 2,
+      "steps": 72,
+      "tokens": 1795615
+    }
+  },
+  "bundle_format": 1,
+  "code_version": "50dad9bfaade047844ced2133eedf39331040c71",
+  "created_at": "2026-09-29T17:35:47.509405Z",
+  "dataset_digest": "{\"baseline_app_metrics.csv\": \"c1894ef24620f3f6df284031ccf94fb692e7b154b1db0163b5eddcfea3d159ed\", \"baseline_container_metrics.csv\": \"204e1e852514f93ca15a764a122e5e9f9124b3b4810d7ec9a02cd5bad6ba54b1\", \"cluster_app_metrics.csv\": \"b6ebb06539a158a76ded1cf91c2fa4b92ec766901c306f107163198d95540ee3\", \"cluster_incident_logs.csv\": \"3c75d2c1f984bcce26e07df9749bdc28eafb072c0974025afa9fec0408504d3c\", \"container_metrics.csv\": \"90b7873006a1d753baaa7c7c75cf34f0fd473be8d229249d51b22ef5c597230a\", \"incident_traces.csv\": \"5e5b7ad951172af4115bbac0384abf3d8c11a95e369d82b2ed2c0930fc88f705\"}",
+  "depth": 0,
+  "duckdb_version": "1.5.4",
+  "files": {
+    "coverage_human.md": {
+      "bytes": 2609,
+      "sha256": "8d605389d73ec5226c6430c0926cab74a8a60944642511abedf12902dbaceb8a"
+    },
+    "report.md": {
+      "bytes": 174,
+      "sha256": "415aa6272dcfad4f35c55b024f22cd52a13a567ae496b6a3765ba18e34513818"
+    },
+    "run.duckdb": {
+      "bytes": 6565888,
+      "sha256": "54267d6f4d65b5a1f067d0fa7a99d0ac4b0226c8800ac13affcefa164cf9e0ab"
+    }
+  },
+  "frozen_at": "2026-09-29T17:57:17.269018Z",
+  "kind": "full",
+  "models": [
+    "muse-spark-1.3-contributor"
+  ],
+  "outcome": {
+    "accepted_hypothesis_id": null,
+    "kind": "inconclusive",
+    "reason": "unknown"
+  },
+  "parent": null,
+  "root_run_id": "r20260929T173547Z-6f72a3",
+  "run_id": "r20260929T173547Z-6f72a3"
+}

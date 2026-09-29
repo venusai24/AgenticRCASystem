@@ -51,10 +51,18 @@ _out = pathlib.Path('/out')
 handle_path = _in / 'handle.parquet'
 df = pd.read_parquet(handle_path) if handle_path.exists() else pd.DataFrame()
 
+def get_zscores(series):
+    return (series - series.mean()) / series.std()
+
+def is_spike(series, threshold=3.0):
+    return get_zscores(series) > threshold
+
 # Write result: call save_result(rows) with a list of dicts, or assign to `result`.
 def save_result(rows):
+    if isinstance(rows, pd.DataFrame):
+        rows = rows.to_dict(orient='records')
     with open(_out / 'result.json', 'w') as _f:
-        json.dump({'rows': rows}, _f)
+        json.dump({'rows': rows}, _f, default=str)
 """
 
 
@@ -67,10 +75,13 @@ class SandboxArgs(ToolArgs):
     )
     code: str = Field(
         description=(
-            "Python code to run. `df` is pre-loaded from the handle. "
-            "Call save_result(rows) with a list of dicts to return output. "
+            "Python code to run. `df` is pre-loaded from the handle.\n"
+            "EXAMPLE:\n"
+            "errors = df[df['status'] == 500]\n"
+            "save_result(errors.to_dict('records'))\n"
             "Only stdlib + numpy + pandas + scipy + duckdb + pyarrow are available. "
-            "No network. No filesystem access outside /in and /out."
+            "No network. No filesystem access outside /in and /out.\n"
+            "Helper functions available: get_zscores(series), is_spike(series, threshold=3.0)."
         )
     )
     description: str = Field(
@@ -145,6 +156,13 @@ def _run_sandbox(in_dir: Path, out_dir: Path) -> tuple[int, str, str]:
     sources=["derived"],
 )
 def python_sandbox(a: SandboxArgs, ctx) -> ToolResult:
+    import ast
+    try:
+        ast.parse(a.code)
+    except SyntaxError as e:
+        from agentic_rca.tools._common import ToolInputError  # noqa: PLC0415
+        raise ToolInputError(f"Syntax error in provided Python code: {e.msg} at line {e.lineno}")
+
     # Resolve the handle rows
     rows = ctx.result_lookup(a.query_id)
     if rows is None:

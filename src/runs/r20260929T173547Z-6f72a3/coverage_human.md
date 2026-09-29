@@ -1,0 +1,35 @@
+# Coverage (Human-Facing)
+
+- **SUCCESS**: Sources: ["app_metrics"] | Requested: {} | Rows: 44
+- **SUCCESS**: Sources: ["app_metrics"] | Requested: {} | Rows: 44
+- **SUCCESS**: Sources: ["app_metrics"] | Requested: {"service": "*"} | Rows: 11
+- **SUCCESS**: Sources: ["app_metrics"] | Requested: {"service": ["ServiceTest1"], "metric": ["mrt", "rr", "cnt"]} | Rows: 87
+- **SUCCESS**: Sources: ["app_metrics"] | Requested: {"metric": "*"} | Rows: 4
+- **SUCCESS**: Sources: ["app_metrics"] | Requested: {"metric": "*"} | Rows: 4
+- **SUCCESS**: Sources: ["container_metrics"] | Requested: {} | Rows: 54
+- **SUCCESS**: Sources: ["container_metrics"] | Requested: {} | Rows: 54
+- **SUCCESS**: Sources: ["container_metrics"] | Requested: {"host": "*"} | Rows: 18
+- **SUCCESS**: Sources: ["container_metrics"] | Requested: {"metric": "*"} | Rows: 3
+- **SUCCESS**: Sources: ["container_metrics"] | Requested: {"metric": "*"} | Rows: 3
+- **SUCCESS**: Sources: ["container_metrics"] | Requested: {"host": ["IG01", "MG01", "Tomcat01", "Mysql01"], "metric": ["Tomcat-Requests_7441-\"http-nio-8003\"_ProcessingTimeRequestInfo", "system-cpu_cpu_usage"]} | Rows: 232
+- **SUCCESS**: Sources: ["log_access_apache"] | Requested: {"service": "*"} | Rows: 11
+- **SUCCESS**: Sources: ["log_access_apache"] | Requested: {} | Rows: 5
+- **SUCCESS**: Sources: ["log_access_localhost"] | Requested: {"service": "*"} | Rows: 11
+- **SUCCESS**: Sources: ["log_access_localhost"] | Requested: {} | Rows: 6
+- **SUCCESS**: Sources: ["log_templates"] | Requested: {} | Rows: 7
+- **SUCCESS**: Sources: ["logs"] | Requested: {"host": "*"} | Rows: 6
+- **SUCCESS**: Sources: ["spans"] | Requested: {} | Rows: 12
+- **SUCCESS**: Sources: ["spans"] | Requested: {} | Rows: 12
+- **SUCCESS**: Sources: ["spans"] | Requested: {"host": "*"} | Rows: 8
+- **SUCCESS**: Sources: ["spans"] | Requested: {} | Rows: 12
+- **SUCCESS**: Sources: ["stage0_profile"] | Requested: {} | Rows: 11
+- **SUCCESS**: Sources: ["stage0_profile"] | Requested: {} | Rows: 11
+- **SUCCESS**: Sources: ["system_facts"] | Requested: {} | Rows: 0
+- **SUCCESS**: Sources: ["system_facts"] | Requested: {} | Rows: 0
+- **SUCCESS**: Sources: ["system_facts"] | Requested: {} | Rows: 0
+- **SUCCESS**: Sources: ["system_facts"] | Requested: {} | Rows: 0
+- **SUCCESS**: Sources: ["system_facts"] | Requested: {} | Rows: 0
+- **SUCCESS**: Sources: ["system_facts"] | Requested: {} | Rows: 0
+- **SUCCESS**: Sources: ["system_facts"] | Requested: {} | Rows: 0
+- **SUCCESS**: Sources: ["system_facts"] | Requested: {} | Rows: 0
+- **SUCCESS**: Sources: ["system_facts"] | Requested: {} | Rows: 0

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgenticRCA Investigator</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h2>AgenticRCA</h2>
+                <button id="newRunBtn" class="btn primary-btn">+ New Run</button>
+            </div>
+            <div class="runs-list" id="runsList">
+                <!-- Runs injected here -->
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Context Menu for Amendment -->
+            <div id="contextMenu" class="context-menu hidden">
+                <ul>
+                    <li id="amendOption">Amend this Run...</li>
+                </ul>
+            </div>
+
+            <!-- New Run View -->
+            <div id="newRunView" class="view">
+                <div class="glass-panel form-panel">
+                    <h1>Start New Investigation</h1>
+                    <form id="ingestForm">
+                        <h3>1. Upload Telemetry (CSVs)</h3>
+                        <div class="file-inputs">
+                            <label>Baseline App Metrics: <input type="file" id="f_baseline_app" accept=".csv"></label>
+                            <label>Baseline Container Metrics: <input type="file" id="f_baseline_container" accept=".csv"></label>
+                            <label>Incident App Metrics: <input type="file" id="f_cluster_app" accept=".csv"></label>
+                            <label>Incident Container Metrics: <input type="file" id="f_cluster_container" accept=".csv"></label>
+                            <label>Incident Traces: <input type="file" id="f_incident_traces" accept=".csv"></label>
+                            <label>Incident Logs: <input type="file" id="f_incident_logs" accept=".csv"></label>
+                        </div>
+                        <h3>2. Investigation Parameters</h3>
+                        <div class="param-inputs">
+                            <input type="text" id="incident_ts" placeholder="Incident Timestamp (e.g. 2021-03-04T10:15:00Z)" required>
+                            <textarea id="hypotheses" placeholder="Human Hypotheses (comma separated)"></textarea>
+                            <input type="number" id="max_steps" placeholder="Max Steps (default: 60)" value="60">
+                        </div>
+                        <button type="submit" class="btn primary-btn large-btn">Ingest & Run</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Amend Modal View -->
+            <div id="amendModal" class="modal hidden">
+                <div class="glass-panel form-panel modal-content">
+                    <h2>Amend Run <span id="amendRunId"></span></h2>
+                    <form id="amendForm">
+                        <textarea id="amend_question" placeholder="Ask a question or add a hypothesis" required></textarea>
+                        <input type="number" id="amend_steps" placeholder="Max Steps (default: 20)" value="20">
+                        <div class="modal-actions">
+                            <button type="button" id="cancelAmendBtn" class="btn">Cancel</button>
+                            <button type="submit" class="btn primary-btn">Start Amendment</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Chat / Run View -->
+            <div id="chatView" class="view hidden">
+                <div id="chatHeader" class="chat-header">
+                    <h2 id="chatTitle">Investigation In Progress</h2>
+                </div>
+                <div id="chatHistory" class="chat-history">
+                    <!-- Streamed events go here -->
+                </div>
+                <div id="reportContainer" class="report-container hidden">
+                    <!-- Rendered report goes here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>

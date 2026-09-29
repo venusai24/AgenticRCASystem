@@ -39,6 +39,7 @@ def main(argv: list[str] | None = None) -> int:
     pam.add_argument("--hypothesis", action="append", default=[])
     pam.add_argument("--question")
     pam.add_argument("--max-steps", type=int, default=20)
+    pam.add_argument("--seq", type=int, default=None, help="amend from a specific sequence number")
     a = p.parse_args(argv)
     if a.cmd == "ingest":
         from agentic_rca.ingest.pipeline import build_index
@@ -161,7 +162,8 @@ def main(argv: list[str] | None = None) -> int:
             data_dir=None,
             human_hypotheses=hypotheses,
             budget=Budget(max_steps=a.max_steps, max_tokens=1500000), # amendment budget
-            parent_run_dir=Path(a.bundle)
+            parent_run_dir=Path(a.bundle),
+            parent_seq=a.seq
         )
         print(json.dumps(run_investigation(cfg, llm), default=str))
         return 0
